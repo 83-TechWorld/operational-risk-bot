@@ -33,11 +33,17 @@ function App() {
   const [selectedApp, setSelectedApp] = useState<string>('eControls');
   const [selectedRole, setSelectedRole] = useState<UserRole>('user');
 
-  const userContext = useStoreState((state: StoreModel) => state.userContext);
-  const setUserContext = useStoreActions((actions: StoreModel) => actions.setUserContext);
+  // ✅ CORRECTED: Use generic type parameter, not inline typing
+  const userContext = useStoreState<StoreModel>(
+    (state) => state.userContext
+  );
+
+  const setUserContext = useStoreActions<StoreModel>(
+    (actions) => actions.setUserContext
+  );
 
   useEffect(() => {
-    checkBackendHealth();
+    //checkBackendHealth();
   }, []);
 
   const checkBackendHealth = async () => {
@@ -201,7 +207,7 @@ function App() {
             <i className="bi bi-database me-2"></i>
             Enterprise RAG Assistant
           </span>
-          
+
           <div className="d-flex align-items-center">
             <span className="text-white me-3">
               <i className="bi bi-person-circle me-2"></i>
@@ -260,7 +266,7 @@ function App() {
       {/* Main Content Area */}
       <div className="flex-grow-1 overflow-hidden">
         {activeTab === 'chat' && <ChatInterface />}
-        
+
         {activeTab === 'documents' && userContext.role === 'admin' && (
           <DocumentUpload />
         )}
