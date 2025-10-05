@@ -1,0 +1,235 @@
+---
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rag-chatbot
+
+---
+# ConfigMap for Backend Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  namespace: rag-chatbot
+data:
+  DEBUG: "False"
+  ECONTROLS_DB_HOST: "econtrols-db-service"
+  ECONTROLS_DB_PORT: "5432"
+  ECONTROLS_DB_NAME: "econtrols_db"
+  MYKRI_DB_HOST: "mykri-db-service"
+  MYKRI_DB_PORT: "5432"
+  MYKRI_DB_NAME: "mykri_db"
+  AZURE_OPENAI_API_VERSION: "2024-02-15-preview"
+
+---
+# Secret for sensitive data
+apiVersion: v1
+kind: Secret
+metadata:
+  name: backend-secrets
+  namespace: rag-chatbot
+type: Opaque
+stringData:
+  ECONTROLS_DB_USER: "postgres"
+  ECONTROLS_DB_PASSWORD: "your-secure-password"
+  MYKRI_DB_USER: "postgres"
+  MYKRI_DB_PASSWORD: "your-secure-password"
+  RAG_API_BEARER_TOKEN: "your-rag-token"
+  AZURE_OPENAI_API_KEY: "your-openai-key"
+  JWT_SECRET_KEY: "your-jwt-secret"
+
+---
+# Backend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: rag-chatbot
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+      - name: backend
+        image: your-registry/rag-backend:latest
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - configMapRef:
+            name: backend-config
+        - secretRef:
+            name: backend-secrets
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+
+---
+# Backend Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+  namespace: rag-chatbot
+spec:
+  selector:
+    app: backend
+  ports:
+  - port: 8000
+    targetPort: 8000
+  type: ClusterIP
+
+---
+# Frontend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: rag-chatbot
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: your-registry/rag-frontend:latest
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+
+---
+# Frontend Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-service
+  namespace: rag-chatbot
+spec:
+  selector:
+    app: frontend
+  ports:
+  - port: 80
+    targetPort: 80
+  type: LoadBalancer
+
+---
+# Ingress (optional - if using ingress controller)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rag-ingress
+  namespace: rag-chatbot
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  tls:
+  - hosts:
+    - rag-chatbot.yourcompany.com
+    secretName: rag-tls-secret
+  rules:
+  - host: rag-chatbot.yourcompany.com
+    http:
+      paths:
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: backend-service
+            port:
+              number: 8000
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frontend-service
+            port:
+              number: 80
+
+---
+# Horizontal Pod Autoscaler for Backend
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend-hpa
+  namespace: rag-chatbot
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+---
+# PersistentVolume for logs (optional)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backend-logs-pvc
+  namespace: rag-chatbot
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
