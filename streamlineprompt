@@ -1,0 +1,21 @@
+# Polished project description
+
+Can you help me build a web application using React 19 (TypeScript) for the frontend and Spring Boot (REST API) for the backend to manage the entire interview process end-to-end? I want a streamlined, step-by-step workflow:
+
+* HR can schedule interviews and click **Notify** to email interested employees.
+* Employees who participate can earn rewards; they can view their rewards in an employee interview portal.
+* Each interview round is recorded with a feedback form (behavioural feedback, coding assessment, project experience, challenges faced, and a pass/fail selection).
+* Based on feedback, HR can either advance the candidate to the next round or mark them unselected with comments.
+* HR (or L2 developers / interviewers) should be able to schedule subsequent rounds. Scheduling and notifications should be easy and mostly automated.
+* After each round the interviewer fills the same or similar feedback form; HR uses those forms to decide the next step (coding round, managerial round, compensation round, etc.).
+* Finally, HR can mark candidates as **Final Selected**, **Joined**, **Not Joined**, etc., and record joining dates.
+
+Functional goals:
+
+* Simple, intuitive UI — candidates should move between statuses like a todo list or a Jira-style board (drag-and-drop between columns is fine).
+* Use reliable technologies: React 19 + TypeScript, Spring Boot, Spring Data JPA / Hibernate, PostgreSQL, and REST APIs.
+* Avoid Lombok.
+* Deliver clear documentation and architecture diagrams.
+* Provide a single-file deliverable (so I can copy all code into one file and split it later).
+
+Please propose an implementation approach, recommended React libraries for UI and drag-and-drop, database schema ideas, and a high-level architecture diagram and documentation.
