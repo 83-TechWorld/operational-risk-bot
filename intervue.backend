@@ -1,0 +1,2591 @@
+// ==================== POM.XML ====================
+/*
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.2.0</version>
+    </parent>
+    
+    <groupId>com.interview</groupId>
+    <artifactId>rag-interview-system</artifactId>
+    <version>1.0.0</version>
+    
+    <properties>
+        <java.version>17</java.version>
+    </properties>
+    
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webflux</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-client</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>3.0.0</version>
+        </dependency>
+    </dependencies>
+    
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+*/
+
+// ==================== APPLICATION.YML ====================
+/*
+server:
+  port: 8080
+
+spring:
+  application:
+    name: rag-interview-system
+    
+  datasource:
+    url: jdbc:postgresql://localhost:5432/interview_db
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+    
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        jdbc:
+          batch_size: 20
+        order_inserts: true
+        order_updates: true
+        
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+rag:
+  api:
+    base-url: ${RAG_BASE_URL:https://your-rag-api.com}
+    client-id: ${RAG_CLIENT_ID}
+    client-secret: ${RAG_CLIENT_SECRET}
+    application-name: ${RAG_APP_NAME:interview-system}
+    application-key: ${RAG_APP_KEY}
+    token-endpoint: ${RAG_TOKEN_ENDPOINT:/oauth/token}
+    chat-endpoint: /api/chat
+    query-endpoint: /api/query
+    upload-endpoint: /api/upload
+    
+sso:
+  oauth2:
+    client-id: ${SSO_CLIENT_ID}
+    client-secret: ${SSO_CLIENT_SECRET}
+    authorization-uri: ${SSO_AUTH_URI}
+    token-uri: ${SSO_TOKEN_URI}
+    user-info-uri: ${SSO_USER_INFO_URI}
+    
+interview:
+  candidate:
+    cooldown-days: 90
+  question:
+    max-per-session: 15
+    min-per-session: 8
+  evaluation:
+    pass-threshold: 60
+*/
+
+// ==================== ENUMS ====================
+
+package com.interview.model;
+
+public enum InterviewMode {
+    EASY, MEDIUM, HARD
+}
+
+// ----
+
+package com.interview.model;
+
+public enum InterviewStatus {
+    PENDING, IN_PROGRESS, COMPLETED, CANCELLED
+}
+
+// ----
+
+package com.interview.model;
+
+public enum QuestionCategory {
+    CODING, BEHAVIORAL, TECHNICAL, GENERAL
+}
+
+// ==================== ENTITY CLASSES ====================
+
+package com.interview.model;
+
+import jakarta.persistence.*;
+import java.time.LocalDateTime;
+import java.util.Objects;
+
+@Entity
+@Table(name = "job_descriptions", indexes = {
+    @Index(name = "idx_job_active", columnList = "is_active")
+})
+public class JobDescription {
+    
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    @Column(nullable = false, length = 500)
+    private String title;
+    
+    @Column(nullable = false, columnDefinition = "TEXT")
+    private String description;
+    
+    @Column(columnDefinition = "TEXT")
+    private String requirements;
+    
+    @Enumerated(EnumType.STRING)
+    @Column(name = "interview_mode", nullable = false, length = 20)
+    private InterviewMode interviewMode;
+    
+    @Column(name = "rag_document_id", length = 255)
+    private String ragDocumentId;
+    
+    @Column(name = "created_by", nullable = false, length = 255)
+    private String createdBy;
+    
+    @Column(name = "created_at", nullable = false)
+    private LocalDateTime createdAt;
+    
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
+    
+    @Column(name = "is_active")
+    private Boolean isActive = true;
+    
+    public JobDescription() {
+    }
+    
+    public JobDescription(String title, String description, InterviewMode interviewMode, String createdBy) {
+        this.title = title;
+        this.description = description;
+        this.interviewMode = interviewMode;
+        this.createdBy = createdBy;
+    }
+    
+    @PrePersist
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now();
+    }
+    
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
+    
+    // Getters and Setters
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+    
+    public String getTitle() { return title; }
+    public void setTitle(String title) { this.title = title; }
+    
+    public String getDescription() { return description; }
+    public void setDescription(String description) { this.description = description; }
+    
+    public String getRequirements() { return requirements; }
+    public void setRequirements(String requirements) { this.requirements = requirements; }
+    
+    public InterviewMode getInterviewMode() { return interviewMode; }
+    public void setInterviewMode(InterviewMode interviewMode) { this.interviewMode = interviewMode; }
+    
+    public String getRagDocumentId() { return ragDocumentId; }
+    public void setRagDocumentId(String ragDocumentId) { this.ragDocumentId = ragDocumentId; }
+    
+    public String getCreatedBy() { return createdBy; }
+    public void setCreatedBy(String createdBy) { this.createdBy = createdBy; }
+    
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+    
+    public LocalDateTime getUpdatedAt() { return updatedAt; }
+    public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
+    
+    public Boolean getIsActive() { return isActive; }
+    public void setIsActive(Boolean isActive) { this.isActive = isActive; }
+    
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof JobDescription)) return false;
+        JobDescription that = (JobDescription) o;
+        return Objects.equals(id, that.id);
+    }
+    
+    @Override
+    public int hashCode() {
+        return Objects.hash(id);
+    }
+}
+
+// ----
+
+package com.interview.model;
+
+import jakarta.persistence.*;
+import java.time.LocalDateTime;
+import java.util.Objects;
+
+@Entity
+@Table(name = "candidates", indexes = {
+    @Index(name = "idx_candidate_email", columnList = "email")
+})
+public class Candidate {
+    
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    @Column(name = "full_name", nullable = false, length = 255)
+    private String fullName;
+    
+    @Column(nullable = false, unique = true, length = 255)
+    private String email;
+    
+    @Column(length = 50)
+    private String phone;
+    
+    @Column(name = "resume_path", length = 500)
+    private String resumePath;
+    
+    @Column(name = "rag_resume_id", length = 255)
+    private String ragResumeId;
+    
+    @Column(name = "created_at", nullable = false)
+    private LocalDateTime createdAt;
+    
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
+    
+    public Candidate() {
+    }
+    
+    public Candidate(String fullName, String email) {
+        this.fullName = fullName;
+        this.email = email;
+    }
+    
+    @PrePersist
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now();
+    }
+    
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
+    
+    // Getters and Setters
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+    
+    public String getFullName() { return fullName; }
+    public void setFullName(String fullName) { this.fullName = fullName; }
+    
+    public String getEmail() { return email; }
+    public void setEmail(String email) { this.email = email; }
+    
+    public String getPhone() { return phone; }
+    public void setPhone(String phone) { this.phone = phone; }
+    
+    public String getResumePath() { return resumePath; }
+    public void setResumePath(String resumePath) { this.resumePath = resumePath; }
+    
+    public String getRagResumeId() { return ragResumeId; }
+    public void setRagResumeId(String ragResumeId) { this.ragResumeId = ragResumeId; }
+    
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+    
+    public LocalDateTime getUpdatedAt() { return updatedAt; }
+    public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
+    
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof Candidate)) return false;
+        Candidate candidate = (Candidate) o;
+        return Objects.equals(id, candidate.id);
+    }
+    
+    @Override
+    public int hashCode() {
+        return Objects.hash(id);
+    }
+}
+
+// ----
+
+package com.interview.model;
+
+import jakarta.persistence.*;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+
+@Entity
+@Table(name = "interview_sessions", 
+    uniqueConstraints = @UniqueConstraint(columnNames = {"candidate_id", "job_description_id"}),
+    indexes = {
+        @Index(name = "idx_session_status", columnList = "status"),
+        @Index(name = "idx_session_candidate", columnList = "candidate_id"),
+        @Index(name = "idx_session_token", columnList = "session_token")
+    })
+public class InterviewSession {
+    
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    @Column(name = "session_token", nullable = false, unique = true, length = 500)
+    private String sessionToken;
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "candidate_id", nullable = false)
+    private Candidate candidate;
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "job_description_id", nullable = false)
+    private JobDescription jobDescription;
+    
+    @Enumerated(EnumType.STRING)
+    @Column(name = "interview_mode", nullable = false, length = 20)
+    private InterviewMode interviewMode;
+    
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private InterviewStatus status = InterviewStatus.PENDING;
+    
+    @Column(name = "current_step")
+    private Integer currentStep = 0;
+    
+    @Column(name = "total_steps")
+    private Integer totalSteps = 10;
+    
+    @Column(name = "started_at")
+    private LocalDateTime startedAt;
+    
+    @Column(name = "completed_at")
+    private LocalDateTime completedAt;
+    
+    @Column(name = "created_by", nullable = false, length = 255)
+    private String createdBy;
+    
+    @Column(name = "created_at", nullable = false)
+    private LocalDateTime createdAt;
+    
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
+    
+    @OneToMany(mappedBy = "session", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Question> questions = new ArrayList<>();
+    
+    public InterviewSession() {
+    }
+    
+    public InterviewSession(String sessionToken, Candidate candidate, JobDescription jobDescription, 
+                          InterviewMode interviewMode, String createdBy) {
+        this.sessionToken = sessionToken;
+        this.candidate = candidate;
+        this.jobDescription = jobDescription;
+        this.interviewMode = interviewMode;
+        this.createdBy = createdBy;
+    }
+    
+    @PrePersist
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now();
+    }
+    
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
+    
+    // Getters and Setters
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+    
+    public String getSessionToken() { return sessionToken; }
+    public void setSessionToken(String sessionToken) { this.sessionToken = sessionToken; }
+    
+    public Candidate getCandidate() { return candidate; }
+    public void setCandidate(Candidate candidate) { this.candidate = candidate; }
+    
+    public JobDescription getJobDescription() { return jobDescription; }
+    public void setJobDescription(JobDescription jobDescription) { this.jobDescription = jobDescription; }
+    
+    public InterviewMode getInterviewMode() { return interviewMode; }
+    public void setInterviewMode(InterviewMode interviewMode) { this.interviewMode = interviewMode; }
+    
+    public InterviewStatus getStatus() { return status; }
+    public void setStatus(InterviewStatus status) { this.status = status; }
+    
+    public Integer getCurrentStep() { return currentStep; }
+    public void setCurrentStep(Integer currentStep) { this.currentStep = currentStep; }
+    
+    public Integer getTotalSteps() { return totalSteps; }
+    public void setTotalSteps(Integer totalSteps) { this.totalSteps = totalSteps; }
+    
+    public LocalDateTime getStartedAt() { return startedAt; }
+    public void setStartedAt(LocalDateTime startedAt) { this.startedAt = startedAt; }
+    
+    public LocalDateTime getCompletedAt() { return completedAt; }
+    public void setCompletedAt(LocalDateTime completedAt) { this.completedAt = completedAt; }
+    
+    public String getCreatedBy() { return createdBy; }
+    public void setCreatedBy(String createdBy) { this.createdBy = createdBy; }
+    
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+    
+    public LocalDateTime getUpdatedAt() { return updatedAt; }
+    public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
+    
+    public List<Question> getQuestions() { return questions; }
+    public void setQuestions(List<Question> questions) { this.questions = questions; }
+    
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof InterviewSession)) return false;
+        InterviewSession that = (InterviewSession) o;
+        return Objects.equals(id, that.id);
+    }
+    
+    @Override
+    public int hashCode() {
+        return Objects.hash(id);
+    }
+}
+
+// ----
+
+package com.interview.model;
+
+import jakarta.persistence.*;
+import java.time.LocalDateTime;
+import java.util.Objects;
+
+@Entity
+@Table(name = "questions",
+    uniqueConstraints = @UniqueConstraint(columnNames = {"session_id", "step_number"}),
+    indexes = {
+        @Index(name = "idx_question_session", columnList = "session_id")
+    })
+public class Question {
+    
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "session_id", nullable = false)
+    private InterviewSession session;
+    
+    @Column(name = "question_text", nullable = false, columnDefinition = "TEXT")
+    private String questionText;
+    
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private QuestionCategory category;
+    
+    @Column(length = 50)
+    private String difficulty;
+    
+    @Column(name = "step_number", nullable = false)
+    private Integer stepNumber;
+    
+    @Column(name = "rag_question_id", length = 255)
+    private String ragQuestionId;
+    
+    @Column(name = "asked_at", nullable = false)
+    private LocalDateTime askedAt;
+    
+    @OneToOne(mappedBy = "question", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Answer answer;
+    
+    public Question() {
+    }
+    
+    public Question(InterviewSession session, String questionText, QuestionCategory category, Integer stepNumber) {
+        this.session = session;
+        this.questionText = questionText;
+        this.category = category;
+        this.stepNumber = stepNumber;
+    }
+    
+    @PrePersist
+    protected void onCreate() {
+        askedAt = LocalDateTime.now();
+    }
+    
+    // Getters and Setters
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+    
+    public InterviewSession getSession() { return session; }
+    public void setSession(InterviewSession session) { this.session = session; }
+    
+    public String getQuestionText() { return questionText; }
+    public void setQuestionText(String questionText) { this.questionText = questionText; }
+    
+    public QuestionCategory getCategory() { return category; }
+    public void setCategory(QuestionCategory category) { this.category = category; }
+    
+    public String getDifficulty() { return difficulty; }
+    public void setDifficulty(String difficulty) { this.difficulty = difficulty; }
+    
+    public Integer getStepNumber() { return stepNumber; }
+    public void setStepNumber(Integer stepNumber) { this.stepNumber = stepNumber; }
+    
+    public String getRagQuestionId() { return ragQuestionId; }
+    public void setRagQuestionId(String ragQuestionId) { this.ragQuestionId = ragQuestionId; }
+    
+    public LocalDateTime getAskedAt() { return askedAt; }
+    public void setAskedAt(LocalDateTime askedAt) { this.askedAt = askedAt; }
+    
+    public Answer getAnswer() { return answer; }
+    public void setAnswer(Answer answer) { this.answer = answer; }
+    
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof Question)) return false;
+        Question question = (Question) o;
+        return Objects.equals(id, question.id);
+    }
+    
+    @Override
+    public int hashCode() {
+        return Objects.hash(id);
+    }
+}
+
+// ----
+
+package com.interview.model;
+
+import jakarta.persistence.*;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.Objects;
+
+@Entity
+@Table(name = "answers", indexes = {
+    @Index(name = "idx_answer_question", columnList = "question_id")
+})
+public class Answer {
+    
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    @OneToOne
+    @JoinColumn(name = "question_id", nullable = false, unique = true)
+    private Question question;
+    
+    @Column(name = "answer_text", nullable = false, columnDefinition = "TEXT")
+    private String answerText;
+    
+    @Column(name = "evaluation_score", precision = 5, scale = 2)
+    private BigDecimal evaluationScore;
+    
+    @Column(name = "evaluation_feedback", columnDefinition = "TEXT")
+    private String evaluationFeedback;
+    
+    @Column(columnDefinition = "TEXT")
+    private String strengths;
+    
+    @Column(columnDefinition = "TEXT")
+    private String improvements;
+    
+    @Column(name = "answered_at", nullable = false)
+    private LocalDateTime answeredAt;
+    
+    @Column(name = "evaluated_at")
+    private LocalDateTime evaluatedAt;
+    
+    public Answer() {
+    }
+    
+    public Answer(Question question, String answerText) {
+        this.question = question;
+        this.answerText = answerText;
+    }
+    
+    @PrePersist
+    protected void onCreate() {
+        answeredAt = LocalDateTime.now();
+    }
+    
+    // Getters and Setters
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+    
+    public Question getQuestion() { return question; }
+    public void setQuestion(Question question) { this.question = question; }
+    
+    public String getAnswerText() { return answerText; }
+    public void setAnswerText(String answerText) { this.answerText = answerText; }
+    
+    public BigDecimal getEvaluationScore() { return evaluationScore; }
+    public void setEvaluationScore(BigDecimal evaluationScore) { this.evaluationScore = evaluationScore; }
+    
+    public String getEvaluationFeedback() { return evaluationFeedback; }
+    public void setEvaluationFeedback(String evaluationFeedback) { this.evaluationFeedback = evaluationFeedback; }
+    
+    public String getStrengths() { return strengths; }
+    public void setStrengths(String strengths) { this.strengths = strengths; }
+    
+    public String getImprovements() { return improvements; }
+    public void setImprovements(String improvements) { this.improvements = improvements; }
+    
+    public LocalDateTime getAnsweredAt() { return answeredAt; }
+    public void setAnsweredAt(LocalDateTime answeredAt) { this.answeredAt = answeredAt; }
+    
+    public LocalDateTime getEvaluatedAt() { return evaluatedAt; }
+    public void setEvaluatedAt(LocalDateTime evaluatedAt) { this.evaluatedAt = evaluatedAt; }
+    
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof Answer)) return false;
+        Answer answer = (Answer) o;
+        return Objects.equals(id, answer.id);
+    }
+    
+    @Override
+    public int hashCode() {
+        return Objects.hash(id);
+    }
+}
+
+// ----
+
+package com.interview.model;
+
+import jakarta.persistence.*;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.Objects;
+
+@Entity
+@Table(name = "evaluation_results")
+public class EvaluationResult {
+    
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    @OneToOne
+    @JoinColumn(name = "session_id", nullable = false, unique = true)
+    private InterviewSession session;
+    
+    @Column(name = "coding_score", precision = 5, scale = 2)
+    private BigDecimal codingScore = BigDecimal.ZERO;
+    
+    @Column(name = "behavioral_score", precision = 5, scale = 2)
+    private BigDecimal behavioralScore = BigDecimal.ZERO;
+    
+    @Column(name = "technical_score", precision = 5, scale = 2)
+    private BigDecimal technicalScore = BigDecimal.ZERO;
+    
+    @Column(name = "overall_score", precision = 5, scale = 2)
+    private BigDecimal overallScore = BigDecimal.ZERO;
+    
+    @Column(name = "coding_feedback", columnDefinition = "TEXT")
+    private String codingFeedback;
+    
+    @Column(name = "behavioral_feedback", columnDefinition = "TEXT")
+    private String behavioralFeedback;
+    
+    @Column(name = "technical_feedback", columnDefinition = "TEXT")
+    private String technicalFeedback;
+    
+    @Column(columnDefinition = "TEXT")
+    private String recommendation;
+    
+    @Column(name = "proceed_to_next_round")
+    private Boolean proceedToNextRound = false;
+    
+    @Column(name = "evaluated_at", nullable = false)
+    private LocalDateTime evaluatedAt;
+    
+    public EvaluationResult() {
+    }
+    
+    public EvaluationResult(InterviewSession session) {
+        this.session = session;
+    }
+    
+    @PrePersist
+    protected void onCreate() {
+        evaluatedAt = LocalDateTime.now();
+    }
+    
+    // Getters and Setters
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+    
+    public InterviewSession getSession() { return session; }
+    public void setSession(InterviewSession session) { this.session = session; }
+    
+    public BigDecimal getCodingScore() { return codingScore; }
+    public void setCodingScore(BigDecimal codingScore) { this.codingScore = codingScore; }
+    
+    public BigDecimal getBehavioralScore() { return behavioralScore; }
+    public void setBehavioralScore(BigDecimal behavioralScore) { this.behavioralScore = behavioralScore; }
+    
+    public BigDecimal getTechnicalScore() { return technicalScore; }
+    public void setTechnicalScore(BigDecimal technicalScore) { this.technicalScore = technicalScore; }
+    
+    public BigDecimal getOverallScore() { return overallScore; }
+    public void setOverallScore(BigDecimal overallScore) { this.overallScore = overallScore; }
+    
+    public String getCodingFeedback() { return codingFeedback; }
+    public void setCodingFeedback(String codingFeedback) { this.codingFeedback = codingFeedback; }
+    
+    public String getBehavioralFeedback() { return behavioralFeedback; }
+    public void setBehavioralFeedback(String behavioralFeedback) { this.behavioralFeedback = behavioralFeedback; }
+    
+    public String getTechnicalFeedback() { return technicalFeedback; }
+    public void setTechnicalFeedback(String technicalFeedback) { this.technicalFeedback = technicalFeedback; }
+    
+    public String getRecommendation() { return recommendation; }
+    public void setRecommendation(String recommendation) { this.recommendation = recommendation; }
+    
+    public Boolean getProceedToNextRound() { return proceedToNextRound; }
+    public void setProceedToNextRound(Boolean proceedToNextRound) { this.proceedToNextRound = proceedToNextRound; }
+    
+    public LocalDateTime getEvaluatedAt() { return evaluatedAt; }
+    public void setEvaluatedAt(LocalDateTime evaluatedAt) { this.evaluatedAt = evaluatedAt; }
+    
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof EvaluationResult)) return false;
+        EvaluationResult that = (EvaluationResult) o;
+        return Objects.equals(id, that.id);
+    }
+    
+    @Override
+    public int hashCode() {
+        return Objects.hash(id);
+    }
+}
+
+// ----
+
+package com.interview.model;
+
+import jakarta.persistence.*;
+import java.time.LocalDateTime;
+import java.util.Objects;
+
+@Entity
+@Table(name = "interview_history", indexes = {
+    @Index(name = "idx_history_candidate_cooldown", columnList = "candidate_id, cooldown_until")
+})
+public class InterviewHistory {
+    
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "candidate_id", nullable = false)
+    private Candidate candidate;
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "session_id", nullable = false)
+    private InterviewSession session;
+    
+    @Column(name = "interview_date", nullable = false)
+    private LocalDateTime interviewDate;
+    
+    @Column(name = "cooldown_until", nullable = false)
+    private LocalDateTime cooldownUntil;
+    
+    public InterviewHistory() {
+    }
+    
+    public InterviewHistory(Candidate candidate, InterviewSession session, LocalDateTime interviewDate, LocalDateTime cooldownUntil) {
+        this.candidate = candidate;
+        this.session = session;
+        this.interviewDate = interviewDate;
+        this.cooldownUntil = cooldownUntil;
+    }
+    
+    // Getters and Setters
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+    
+    public Candidate getCandidate() { return candidate; }
+    public void setCandidate(Candidate candidate) { this.candidate = candidate; }
+    
+    public InterviewSession getSession() { return session; }
+    public void setSession(InterviewSession session) { this.session = session; }
+    
+    public LocalDateTime getInterviewDate() { return interviewDate; }
+    public void setInterviewDate(LocalDateTime interviewDate) { this.interviewDate = interviewDate; }
+    
+    public LocalDateTime getCooldownUntil() { return cooldownUntil; }
+    public void setCooldownUntil(LocalDateTime cooldownUntil) { this.cooldownUntil = cooldownUntil; }
+    
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof InterviewHistory)) return false;
+        InterviewHistory that = (InterviewHistory) o;
+        return Objects.equals(id, that.id);
+    }
+    
+    @Override
+    public int hashCode() {
+        return Objects.hash(id);
+    }
+}
+
+// ----
+
+package com.interview.model;
+
+import jakarta.persistence.*;
+import java.time.LocalDateTime;
+import java.util.Objects;
+
+@Entity
+@Table(name = "asked_questions_archive", indexes = {
+    @Index(name = "idx_archive_candidate", columnList = "candidate_id")
+})
+public class AskedQuestionArchive {
+    
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "candidate_id", nullable = false)
+    private Candidate candidate;
+    
+    @Column(name = "question_text", nullable = false, columnDefinition = "TEXT")
+    private String questionText;
+    
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private QuestionCategory category;
+    
+    @Column(name = "asked_at", nullable = false)
+    private LocalDateTime askedAt;
+    
+    public AskedQuestionArchive() {
+    }
+    
+    public AskedQuestionArchive(Candidate candidate, String questionText, QuestionCategory category) {
+        this.candidate = candidate;
+        this.questionText = questionText;
+        this.category = category;
+    }
+    
+    @PrePersist
+    protected void onCreate() {
+        askedAt = LocalDateTime.now();
+    }
+    
+    // Getters and Setters
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+    
+    public Candidate getCandidate() { return candidate; }
+    public void setCandidate(Candidate candidate) { this.candidate = candidate; }
+    
+    public String getQuestionText() { return questionText; }
+    public void setQuestionText(String questionText) { this.questionText = questionText; }
+    
+    public QuestionCategory getCategory() { return category; }
+    public void setCategory(QuestionCategory category) { this.category = category; }
+    
+    public LocalDateTime getAskedAt() { return askedAt; }
+    public void setAskedAt(LocalDateTime askedAt) { this.askedAt = askedAt; }
+    
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof AskedQuestionArchive)) return false;
+        AskedQuestionArchive that = (AskedQuestionArchive) o;
+        return Objects.equals(id, that.id);
+    }
+    
+    @Override
+    public int hashCode() {
+        return Objects.hash(id);
+    }
+}
+
+// ==================== REPOSITORIES ====================
+
+package com.interview.repository;
+
+import com.interview.model.JobDescription;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+import java.util.List;
+
+@Repository
+public interface JobDescriptionRepository extends JpaRepository<JobDescription, Long> {
+    List<JobDescription> findByIsActiveTrue();
+}
+
+// ----
+
+package com.interview.repository;
+
+import com.interview.model.Candidate;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+import java.util.Optional;
+
+@Repository
+public interface CandidateRepository extends JpaRepository<Candidate, Long> {
+    Optional<Candidate> findByEmail(String email);
+    boolean existsByEmail(String email);
+}
+
+// ----
+
+package com.interview.repository;
+
+import com.interview.model.InterviewSession;
+import com.interview.model.InterviewStatus;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+import java.util.List;
+import java.util.Optional;
+
+@Repository
+public interface InterviewSessionRepository extends JpaRepository<InterviewSession, Long> {
+    Optional<InterviewSession> findBySessionToken(String sessionToken);
+    
+    List<InterviewSession> findByCandidateIdAndStatus(Long candidateId, InterviewStatus status);
+    
+    @Query("SELECT s FROM InterviewSession s WHERE s.candidate.id = :candidateId AND s.jobDescription.id = :jobId")
+    Optional<InterviewSession> findByCandidateIdAndJobDescriptionId(@Param("candidateId") Long candidateId, 
+                                                                     @Param("jobId") Long jobId);
+    
+    List<InterviewSession> findByStatus(InterviewStatus status);
+    
+    @Query("SELECT s FROM InterviewSession s LEFT JOIN FETCH s.questions WHERE s.id = :sessionId")
+    Optional<InterviewSession> findByIdWithQuestions(@Param("sessionId") Long sessionId);
+}
+
+// ----
+
+package com.interview.repository;
+
+import com.interview.model.Question;
+import com.interview.model.QuestionCategory;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+import java.util.List;
+import java.util.Optional;
+
+@Repository
+public interface QuestionRepository extends JpaRepository<Question, Long> {
+    List<Question> findBySessionIdOrderByStepNumberAsc(Long sessionId);
+    
+    Optional<Question> findBySessionIdAndStepNumber(Long sessionId, Integer stepNumber);
+    
+    @Query("SELECT COUNT(q) FROM Question q WHERE q.session.id = :sessionId AND q.category = :category")
+    Long countBySessionIdAndCategory(@Param("sessionId") Long sessionId, @Param("category") QuestionCategory category);
+}
+
+// ----
+
+package com.interview.repository;
+
+import com.interview.model.Answer;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+import java.util.List;
+import java.util.Optional;
+
+@Repository
+public interface AnswerRepository extends JpaRepository<Answer, Long> {
+    Optional<Answer> findByQuestionId(Long questionId);
+    
+    @Query("SELECT a FROM Answer a WHERE a.question.session.id = :sessionId")
+    List<Answer> findBySessionId(@Param("sessionId") Long sessionId);
+}
+
+// ----
+
+package com.interview.repository;
+
+import com.interview.model.EvaluationResult;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+import java.util.Optional;
+
+@Repository
+public interface EvaluationResultRepository extends JpaRepository<EvaluationResult, Long> {
+    Optional<EvaluationResult> findBySessionId(Long sessionId);
+}
+
+// ----
+
+package com.interview.repository;
+
+import com.interview.model.InterviewHistory;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+import java.time.LocalDateTime;
+import java.util.List;
+
+@Repository
+public interface InterviewHistoryRepository extends JpaRepository<InterviewHistory, Long> {
+    @Query("SELECT h FROM InterviewHistory h WHERE h.candidate.id = :candidateId AND h.cooldownUntil > :currentDate")
+    List<InterviewHistory> findActiveCooldownsByCandidateId(@Param("candidateId") Long candidateId, 
+                                                             @Param("currentDate") LocalDateTime currentDate);
+}
+
+// ----
+
+package com.interview.repository;
+
+import com.interview.model.AskedQuestionArchive;
+import com.interview.model.QuestionCategory;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+import java.util.List;
+
+@Repository
+public interface AskedQuestionArchiveRepository extends JpaRepository<AskedQuestionArchive, Long> {
+    @Query("SELECT a.questionText FROM AskedQuestionArchive a WHERE a.candidate.id = :candidateId AND a.category = :category")
+    List<String> findQuestionTextsByCandidateIdAndCategory(@Param("candidateId") Long candidateId, 
+                                                            @Param("category") QuestionCategory category);
+}
+
+// ==================== DTO CLASSES ====================
+
+package com.interview.dto;
+
+import com.interview.model.InterviewMode;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+
+public class JobDescriptionRequest {
+    
+    @NotBlank(message = "Title is required")
+    private String title;
+    
+    @NotBlank(message = "Description is required")
+    private String description;
+    
+    private String requirements;
+    
+    @NotNull(message = "Interview mode is required")
+    private InterviewMode interviewMode;
+    
+    public JobDescriptionRequest() {
+    }
+    
+    public String getTitle() { return title; }
+    public void setTitle(String title) { this.title = title; }
+    
+    public String getDescription() { return description; }
+    public void setDescription(String description) { this.description = description; }
+    
+    public String getRequirements() { return requirements; }
+    public void setRequirements(String requirements) { this.requirements = requirements; }
+    
+    public InterviewMode getInterviewMode() { return interviewMode; }
+    public void setInterviewMode(InterviewMode interviewMode) { this.interviewMode = interviewMode; }
+}
+
+// ----
+
+package com.interview.dto;
+
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+
+public class CreateInterviewSessionRequest {
+    
+    @NotBlank(message = "Candidate name is required")
+    private String candidateName;
+    
+    @NotBlank(message = "Email is required")
+    @Email(message = "Invalid email format")
+    private String email;
+    
+    private String phone;
+    
+    @NotNull(message = "Job description ID is required")
+    private Long jobDescriptionId;
+    
+    public CreateInterviewSessionRequest() {
+    }
+    
+    public String getCandidateName() { return candidateName; }
+    public void setCandidateName(String candidateName) { this.candidateName = candidateName; }
+    
+    public String getEmail() { return email; }
+    public void setEmail(String email) { this.email = email; }
+    
+    public String getPhone() { return phone; }
+    public void setPhone(String phone) { this.phone = phone; }
+    
+    public Long getJobDescriptionId() { return jobDescriptionId; }
+    public void setJobDescriptionId(Long jobDescriptionId) { this.jobDescriptionId = jobDescriptionId; }
+}
+
+// ----
+
+package com.interview.dto;
+
+import jakarta.validation.constraints.NotBlank;
+
+public class SubmitAnswerRequest {
+    
+    @NotBlank(message = "Answer text is required")
+    private String answerText;
+    
+    public SubmitAnswerRequest() {
+    }
+    
+    public String getAnswerText() { return answerText; }
+    public void setAnswerText(String answerText) { this.answerText = answerText; }
+}
+
+// ----
+
+package com.interview.dto;
+
+public class QuestionResponse {
+    private Long questionId;
+    private String questionText;
+    private String category;
+    private Integer stepNumber;
+    private Integer totalSteps;
+    private Integer currentStep;
+    
+    public QuestionResponse() {
+    }
+    
+    public QuestionResponse(Long questionId, String questionText, String category, 
+                          Integer stepNumber, Integer totalSteps, Integer currentStep) {
+        this.questionId = questionId;
+        this.questionText = questionText;
+        this.category = category;
+        this.stepNumber = stepNumber;
+        this.totalSteps = totalSteps;
+        this.currentStep = currentStep;
+    }
+    
+    public Long getQuestionId() { return questionId; }
+    public void setQuestionId(Long questionId) { this.questionId = questionId; }
+    
+    public String getQuestionText() { return questionText; }
+    public void setQuestionText(String questionText) { this.questionText = questionText; }
+    
+    public String getCategory() { return category; }
+    public void setCategory(String category) { this.category = category; }
+    
+    public Integer getStepNumber() { return stepNumber; }
+    public void setStepNumber(Integer stepNumber) { this.stepNumber = stepNumber; }
+    
+    public Integer getTotalSteps() { return totalSteps; }
+    public void setTotalSteps(Integer totalSteps) { this.totalSteps = totalSteps; }
+    
+    public Integer getCurrentStep() { return currentStep; }
+    public void setCurrentStep(Integer currentStep) { this.currentStep = currentStep; }
+}
+
+// ----
+
+package com.interview.dto;
+
+import java.math.BigDecimal;
+
+public class EvaluationResponse {
+    private BigDecimal codingScore;
+    private BigDecimal behavioralScore;
+    private BigDecimal technicalScore;
+    private BigDecimal overallScore;
+    private String codingFeedback;
+    private String behavioralFeedback;
+    private String technicalFeedback;
+    private String recommendation;
+    private Boolean proceedToNextRound;
+    
+    public EvaluationResponse() {
+    }
+    
+    // Getters and Setters
+    public BigDecimal getCodingScore() { return codingScore; }
+    public void setCodingScore(BigDecimal codingScore) { this.codingScore = codingScore; }
+    
+    public BigDecimal getBehavioralScore() { return behavioralScore; }
+    public void setBehavioralScore(BigDecimal behavioralScore) { this.behavioralScore = behavioralScore; }
+    
+    public BigDecimal getTechnicalScore() { return technicalScore; }
+    public void setTechnicalScore(BigDecimal technicalScore) { this.technicalScore = technicalScore; }
+    
+    public BigDecimal getOverallScore() { return overallScore; }
+    public void setOverallScore(BigDecimal overallScore) { this.overallScore = overallScore; }
+    
+    public String getCodingFeedback() { return codingFeedback; }
+    public void setCodingFeedback(String codingFeedback) { this.codingFeedback = codingFeedback; }
+    
+    public String getBehavioralFeedback() { return behavioralFeedback; }
+    public void setBehavioralFeedback(String behavioralFeedback) { this.behavioralFeedback = behavioralFeedback; }
+    
+    public String getTechnicalFeedback() { return technicalFeedback; }
+    public void setTechnicalFeedback(String technicalFeedback) { this.technicalFeedback = technicalFeedback; }
+    
+    public String getRecommendation() { return recommendation; }
+    public void setRecommendation(String recommendation) { this.recommendation = recommendation; }
+    
+    public Boolean getProceedToNextRound() { return proceedToNextRound; }
+    public void setProceedToNextRound(Boolean proceedToNextRound) { this.proceedToNextRound = proceedToNextRound; }
+}
+
+// ==================== RAG CLIENT CONFIGURATION ====================
+
+package com.interview.config;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.reactive.function.client.WebClient;
+import java.time.Duration;
+
+@Configuration
+public class RagClientConfig {
+    
+    @Value("${rag.api.base-url}")
+    private String ragBaseUrl;
+    
+    @Bean(name = "ragWebClient")
+    public WebClient ragWebClient() {
+        return WebClient.builder()
+                .baseUrl(ragBaseUrl)
+                .defaultHeader("Content-Type", "application/json")
+                .build();
+    }
+}
+
+// ----
+
+package com.interview.config;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+
+@Component
+public class RagApiConfig {
+    
+    @Value("${rag.api.base-url}")
+    private String baseUrl;
+    
+    @Value("${rag.api.client-id}")
+    private String clientId;
+    
+    @Value("${rag.api.client-secret}")
+    private String clientSecret;
+    
+    @Value("${rag.api.application-name}")
+    private String applicationName;
+    
+    @Value("${rag.api.application-key}")
+    private String applicationKey;
+    
+    @Value("${rag.api.token-endpoint}")
+    private String tokenEndpoint;
+    
+    @Value("${rag.api.chat-endpoint}")
+    private String chatEndpoint;
+    
+    @Value("${rag.api.query-endpoint}")
+    private String queryEndpoint;
+    
+    @Value("${rag.api.upload-endpoint}")
+    private String uploadEndpoint;
+    
+    // Getters
+    public String getBaseUrl() { return baseUrl; }
+    public String getClientId() { return clientId; }
+    public String getClientSecret() { return clientSecret; }
+    public String getApplicationName() { return applicationName; }
+    public String getApplicationKey() { return applicationKey; }
+    public String getTokenEndpoint() { return tokenEndpoint; }
+    public String getChatEndpoint() { return chatEndpoint; }
+    public String getQueryEndpoint() { return queryEndpoint; }
+    public String getUploadEndpoint() { return uploadEndpoint; }
+}
+
+// ==================== RAG SERVICE ====================
+
+package com.interview.service;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.interview.config.RagApiConfig;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.client.MultipartBodyBuilder;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.reactive.function.BodyInserters;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
+
+@Service
+public class RagService {
+    
+    private static final Logger logger = LoggerFactory.getLogger(RagService.class);
+    private final WebClient ragWebClient;
+    private final RagApiConfig ragConfig;
+    private final ObjectMapper objectMapper;
+    
+    private String cachedToken;
+    private Instant tokenExpiryTime;
+    
+    public RagService(@Qualifier("ragWebClient") WebClient ragWebClient, 
+                     RagApiConfig ragConfig,
+                     ObjectMapper objectMapper) {
+        this.ragWebClient = ragWebClient;
+        this.ragConfig = ragConfig;
+        this.objectMapper = objectMapper;
+    }
+    
+    public String getBearerToken() {
+        if (cachedToken != null && tokenExpiryTime != null && Instant.now().isBefore(tokenExpiryTime)) {
+            return cachedToken;
+        }
+        
+        try {
+            Map<String, String> tokenRequest = new HashMap<>();
+            tokenRequest.put("client_id", ragConfig.getClientId());
+            tokenRequest.put("client_secret", ragConfig.getClientSecret());
+            tokenRequest.put("application_name", ragConfig.getApplicationName());
+            tokenRequest.put("application_key", ragConfig.getApplicationKey());
+            tokenRequest.put("grant_type", "client_credentials");
+            
+            String response = ragWebClient.post()
+                    .uri(ragConfig.getTokenEndpoint())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(tokenRequest)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block(Duration.ofSeconds(10));
+            
+            JsonNode jsonNode = objectMapper.readTree(response);
+            cachedToken = jsonNode.get("access_token").asText();
+            
+            int expiresIn = jsonNode.has("expires_in") ? jsonNode.get("expires_in").asInt() : 3600;
+            tokenExpiryTime = Instant.now().plusSeconds(expiresIn - 60);
+            
+            logger.info("RAG API token obtained successfully");
+            return cachedToken;
+            
+        } catch (Exception e) {
+            logger.error("Failed to obtain RAG API token", e);
+            throw new RuntimeException("Failed to authenticate with RAG API", e);
+        }
+    }
+    
+    public String uploadDocument(MultipartFile file, String documentType) {
+        try {
+            String token = getBearerToken();
+            
+            MultipartBodyBuilder builder = new MultipartBodyBuilder();
+            builder.part("file", new ByteArrayResource(file.getBytes()) {
+                @Override
+                public String getFilename() {
+                    return file.getOriginalFilename();
+                }
+            });
+            builder.part("document_type", documentType);
+            
+            String response = ragWebClient.post()
+                    .uri(ragConfig.getUploadEndpoint())
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                    .contentType(MediaType.MULTIPART_FORM_DATA)
+                    .body(BodyInserters.fromMultipartData(builder.build()))
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block(Duration.ofSeconds(30));
+            
+            JsonNode jsonNode = objectMapper.readTree(response);
+            String documentId = jsonNode.get("document_id").asText();
+            
+            logger.info("Document uploaded successfully with ID: {}", documentId);
+            return documentId;
+            
+        } catch (Exception e) {
+            logger.error("Failed to upload document to RAG", e);
+            throw new RuntimeException("Failed to upload document", e);
+        }
+    }
+    
+    public String queryDocument(String documentId, String query) {
+        try {
+            String token = getBearerToken();
+            
+            Map<String, Object> queryRequest = new HashMap<>();
+            queryRequest.put("document_id", documentId);
+            queryRequest.put("query", query);
+            queryRequest.put("max_results", 5);
+            
+            String response = ragWebClient.post()
+                    .uri(ragConfig.getQueryEndpoint())
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(queryRequest)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block(Duration.ofSeconds(15));
+            
+            logger.info("Document query executed successfully");
+            return response;
+            
+        } catch (Exception e) {
+            logger.error("Failed to query document from RAG", e);
+            throw new RuntimeException("Failed to query document", e);
+        }
+    }
+    
+    public String chat(String message, String context, String[] documentIds) {
+        try {
+            String token = getBearerToken();
+            
+            Map<String, Object> chatRequest = new HashMap<>();
+            chatRequest.put("message", message);
+            if (context != null && !context.isEmpty()) {
+                chatRequest.put("context", context);
+            }
+            if (documentIds != null && documentIds.length > 0) {
+                chatRequest.put("document_ids", documentIds);
+            }
+            
+            String response = ragWebClient.post()
+                    .uri(ragConfig.getChatEndpoint())
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(chatRequest)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block(Duration.ofSeconds(20));
+            
+            JsonNode jsonNode = objectMapper.readTree(response);
+            String answer = jsonNode.get("response").asText();
+            
+            logger.info("Chat request executed successfully");
+            return answer;
+            
+        } catch (Exception e) {
+            logger.error("Failed to execute chat with RAG", e);
+            throw new RuntimeException("Failed to execute chat", e);
+        }
+    }
+    
+    public Map<String, Object> generateQuestions(String jobDescriptionId, String resumeId, 
+                                                String difficulty, String category, int count, 
+                                                String[] excludeQuestions) {
+        try {
+            StringBuilder prompt = new StringBuilder();
+            prompt.append("Generate ").append(count).append(" unique interview questions for the category: ")
+                  .append(category).append(" with difficulty level: ").append(difficulty).append(". ");
+            
+            if (excludeQuestions != null && excludeQuestions.length > 0) {
+                prompt.append("Do not generate questions similar to these: ");
+                for (String q : excludeQuestions) {
+                    prompt.append("\"").append(q).append("\", ");
+                }
+            }
+            
+            prompt.append("Format response as JSON array with fields: question, difficulty, category.");
+            
+            String response = chat(prompt.toString(), "interview_generation", 
+                                 new String[]{jobDescriptionId, resumeId});
+            
+            JsonNode jsonNode = objectMapper.readTree(response);
+            
+            Map<String, Object> result = new HashMap<>();
+            result.put("questions", jsonNode);
+            
+            logger.info("Generated {} questions successfully", count);
+            return result;
+            
+        } catch (Exception e) {
+            logger.error("Failed to generate questions", e);
+            throw new RuntimeException("Failed to generate questions", e);
+        }
+    }
+    
+    public Map<String, Object> evaluateAnswer(String question, String answer, String category, 
+                                             String jobDescriptionId, String resumeId) {
+        try {
+            String prompt = String.format(
+                "Evaluate this interview answer for %s category:\nQuestion: %s\nAnswer: %s\n\n" +
+                "Provide evaluation as JSON with fields: score (0-100), feedback, strengths, improvements",
+                category, question, answer
+            );
+            
+            String response = chat(prompt, "answer_evaluation", 
+                                 new String[]{jobDescriptionId, resumeId});
+            
+            JsonNode jsonNode = objectMapper.readTree(response);
+            
+            Map<String, Object> evaluation = new HashMap<>();
+            evaluation.put("score", jsonNode.has("score") ? jsonNode.get("score").asDouble() : 0.0);
+            evaluation.put("feedback", jsonNode.has("feedback") ? jsonNode.get("feedback").asText() : "");
+            evaluation.put("strengths", jsonNode.has("strengths") ? jsonNode.get("strengths").asText() : "");
+            evaluation.put("improvements", jsonNode.has("improvements") ? jsonNode.get("improvements").asText() : "");
+            
+            logger.info("Answer evaluated successfully");
+            return evaluation;
+            
+        } catch (Exception e) {
+            logger.error("Failed to evaluate answer", e);
+            throw new RuntimeException("Failed to evaluate answer", e);
+        }
+    }
+    
+    public boolean checkCandidateEligibility(String jobDescriptionId, String resumeId) {
+        try {
+            String query = "Based on the job description and candidate resume, " +
+                          "is this candidate eligible for the interview? " +
+                          "Respond with YES or NO and brief reasoning.";
+            
+            String response = chat(query, "eligibility_check", 
+                                 new String[]{jobDescriptionId, resumeId});
+            
+            return response.toUpperCase().contains("YES");
+            
+        } catch (Exception e) {
+            logger.error("Failed to check candidate eligibility", e);
+            return false;
+        }
+    }
+}
+
+// ==================== MAIN APPLICATION ====================
+
+package com.interview;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class RagInterviewApplication {
+    
+    public static void main(String[] args) {
+        SpringApplication.run(RagInterviewApplication.class, args);
+    }
+}
+
+// ==================== CONTINUE IN NEXT FILE ====================
+// Due to length constraints, services and controllers will follow...
+
+// ==================== BUSINESS SERVICES ====================
+
+package com.interview.service;
+
+import com.interview.dto.JobDescriptionRequest;
+import com.interview.model.JobDescription;
+import com.interview.repository.JobDescriptionRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.List;
+
+@Service
+public class JobDescriptionService {
+    
+    private static final Logger logger = LoggerFactory.getLogger(JobDescriptionService.class);
+    
+    private final JobDescriptionRepository jobDescriptionRepository;
+    private final RagService ragService;
+    
+    public JobDescriptionService(JobDescriptionRepository jobDescriptionRepository,
+                                RagService ragService) {
+        this.jobDescriptionRepository = jobDescriptionRepository;
+        this.ragService = ragService;
+    }
+    
+    @Transactional
+    public JobDescription createJobDescription(JobDescriptionRequest request, 
+                                              MultipartFile descriptionFile, 
+                                              String createdBy) {
+        try {
+            String ragDocumentId = null;
+            if (descriptionFile != null && !descriptionFile.isEmpty()) {
+                ragDocumentId = ragService.uploadDocument(descriptionFile, "job_description");
+            }
+            
+            JobDescription jobDescription = new JobDescription();
+            jobDescription.setTitle(request.getTitle());
+            jobDescription.setDescription(request.getDescription());
+            jobDescription.setRequirements(request.getRequirements());
+            jobDescription.setInterviewMode(request.getInterviewMode());
+            jobDescription.setRagDocumentId(ragDocumentId);
+            jobDescription.setCreatedBy(createdBy);
+            jobDescription.setIsActive(true);
+            
+            JobDescription saved = jobDescriptionRepository.save(jobDescription);
+            logger.info("Job description created with ID: {}", saved.getId());
+            
+            return saved;
+            
+        } catch (Exception e) {
+            logger.error("Failed to create job description", e);
+            throw new RuntimeException("Failed to create job description", e);
+        }
+    }
+    
+    public List<JobDescription> getAllActiveJobDescriptions() {
+        return jobDescriptionRepository.findByIsActiveTrue();
+    }
+    
+    public JobDescription getJobDescriptionById(Long id) {
+        return jobDescriptionRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Job description not found with ID: " + id));
+    }
+    
+    @Transactional
+    public void deactivateJobDescription(Long id) {
+        JobDescription jobDescription = getJobDescriptionById(id);
+        jobDescription.setIsActive(false);
+        jobDescriptionRepository.save(jobDescription);
+        logger.info("Job description deactivated: {}", id);
+    }
+}
+
+// ----
+
+package com.interview.service;
+
+import com.interview.model.Candidate;
+import com.interview.repository.CandidateRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.Optional;
+
+@Service
+public class CandidateService {
+    
+    private static final Logger logger = LoggerFactory.getLogger(CandidateService.class);
+    
+    private final CandidateRepository candidateRepository;
+    private final RagService ragService;
+    
+    public CandidateService(CandidateRepository candidateRepository, RagService ragService) {
+        this.candidateRepository = candidateRepository;
+        this.ragService = ragService;
+    }
+    
+    @Transactional
+    public Candidate createOrUpdateCandidate(String fullName, String email, String phone, 
+                                            MultipartFile resume) {
+        try {
+            Optional<Candidate> existingCandidate = candidateRepository.findByEmail(email);
+            
+            Candidate candidate;
+            if (existingCandidate.isPresent()) {
+                candidate = existingCandidate.get();
+                candidate.setFullName(fullName);
+                if (phone != null) {
+                    candidate.setPhone(phone);
+                }
+            } else {
+                candidate = new Candidate();
+                candidate.setFullName(fullName);
+                candidate.setEmail(email);
+                candidate.setPhone(phone);
+            }
+            
+            if (resume != null && !resume.isEmpty()) {
+                String ragResumeId = ragService.uploadDocument(resume, "resume");
+                candidate.setRagResumeId(ragResumeId);
+                candidate.setResumePath(resume.getOriginalFilename());
+            }
+            
+            Candidate saved = candidateRepository.save(candidate);
+            logger.info("Candidate saved with ID: {}", saved.getId());
+            
+            return saved;
+            
+        } catch (Exception e) {
+            logger.error("Failed to create/update candidate", e);
+            throw new RuntimeException("Failed to create/update candidate", e);
+        }
+    }
+    
+    public Candidate getCandidateByEmail(String email) {
+        return candidateRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Candidate not found with email: " + email));
+    }
+    
+    public Candidate getCandidateById(Long id) {
+        return candidateRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Candidate not found with ID: " + id));
+    }
+    
+    public boolean candidateExists(String email) {
+        return candidateRepository.existsByEmail(email);
+    }
+}
+
+// ----
+
+package com.interview.service;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.interview.dto.CreateInterviewSessionRequest;
+import com.interview.dto.QuestionResponse;
+import com.interview.model.*;
+import com.interview.repository.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.*;
+import java.util.stream.Collectors;
+
+@Service
+public class InterviewService {
+    
+    private static final Logger logger = LoggerFactory.getLogger(InterviewService.class);
+    
+    private final InterviewSessionRepository sessionRepository;
+    private final QuestionRepository questionRepository;
+    private final AnswerRepository answerRepository;
+    private final InterviewHistoryRepository historyRepository;
+    private final AskedQuestionArchiveRepository archiveRepository;
+    private final EvaluationResultRepository evaluationRepository;
+    private final CandidateService candidateService;
+    private final JobDescriptionService jobDescriptionService;
+    private final RagService ragService;
+    
+    @Value("${interview.candidate.cooldown-days}")
+    private int cooldownDays;
+    
+    @Value("${interview.question.max-per-session}")
+    private int maxQuestionsPerSession;
+    
+    @Value("${interview.question.min-per-session}")
+    private int minQuestionsPerSession;
+    
+    public InterviewService(InterviewSessionRepository sessionRepository,
+                          QuestionRepository questionRepository,
+                          AnswerRepository answerRepository,
+                          InterviewHistoryRepository historyRepository,
+                          AskedQuestionArchiveRepository archiveRepository,
+                          EvaluationResultRepository evaluationRepository,
+                          CandidateService candidateService,
+                          JobDescriptionService jobDescriptionService,
+                          RagService ragService) {
+        this.sessionRepository = sessionRepository;
+        this.questionRepository = questionRepository;
+        this.answerRepository = answerRepository;
+        this.historyRepository = historyRepository;
+        this.archiveRepository = archiveRepository;
+        this.evaluationRepository = evaluationRepository;
+        this.candidateService = candidateService;
+        this.jobDescriptionService = jobDescriptionService;
+        this.ragService = ragService;
+    }
+    
+    @Transactional
+    public Map<String, Object> createInterviewSession(CreateInterviewSessionRequest request,
+                                                     MultipartFile resume,
+                                                     String createdBy) {
+        try {
+            Candidate candidate = candidateService.createOrUpdateCandidate(
+                request.getCandidateName(),
+                request.getEmail(),
+                request.getPhone(),
+                resume
+            );
+            
+            List<InterviewHistory> activeCooldowns = historyRepository
+                    .findActiveCooldownsByCandidateId(candidate.getId(), LocalDateTime.now());
+            
+            if (!activeCooldowns.isEmpty()) {
+                Map<String, Object> response = new HashMap<>();
+                response.put("error", "Candidate is in cooldown period");
+                response.put("cooldown_until", activeCooldowns.get(0).getCooldownUntil());
+                return response;
+            }
+            
+            JobDescription jobDescription = jobDescriptionService.getJobDescriptionById(request.getJobDescriptionId());
+            
+            if (candidate.getRagResumeId() != null && jobDescription.getRagDocumentId() != null) {
+                boolean eligible = ragService.checkCandidateEligibility(
+                    jobDescription.getRagDocumentId(),
+                    candidate.getRagResumeId()
+                );
+                
+                if (!eligible) {
+                    Map<String, Object> response = new HashMap<>();
+                    response.put("error", "Candidate not eligible for this position");
+                    response.put("eligible", false);
+                    return response;
+                }
+            }
+            
+            String sessionToken = UUID.randomUUID().toString();
+            
+            InterviewSession session = new InterviewSession();
+            session.setSessionToken(sessionToken);
+            session.setCandidate(candidate);
+            session.setJobDescription(jobDescription);
+            session.setInterviewMode(jobDescription.getInterviewMode());
+            session.setStatus(InterviewStatus.PENDING);
+            session.setCurrentStep(0);
+            session.setTotalSteps(calculateTotalSteps(jobDescription.getInterviewMode()));
+            session.setCreatedBy(createdBy);
+            
+            InterviewSession savedSession = sessionRepository.save(session);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("session_id", savedSession.getId());
+            response.put("session_token", savedSession.getSessionToken());
+            response.put("candidate_name", candidate.getFullName());
+            response.put("job_title", jobDescription.getTitle());
+            response.put("interview_mode", jobDescription.getInterviewMode());
+            response.put("total_steps", savedSession.getTotalSteps());
+            response.put("eligible", true);
+            
+            logger.info("Interview session created: {}", savedSession.getId());
+            return response;
+            
+        } catch (Exception e) {
+            logger.error("Failed to create interview session", e);
+            throw new RuntimeException("Failed to create interview session", e);
+        }
+    }
+    
+    private int calculateTotalSteps(InterviewMode mode) {
+        switch (mode) {
+            case EASY: return 8;
+            case MEDIUM: return 10;
+            case HARD: return 15;
+            default: return 10;
+        }
+    }
+    
+    @Transactional
+    public QuestionResponse startInterview(String email) {
+        try {
+            Candidate candidate = candidateService.getCandidateByEmail(email);
+            
+            List<InterviewSession> sessions = sessionRepository.findByCandidateIdAndStatus(
+                candidate.getId(), InterviewStatus.PENDING
+            );
+            
+            if (sessions.isEmpty()) {
+                throw new RuntimeException("No pending interview found for this candidate");
+            }
+            
+            InterviewSession session = sessions.get(0);
+            session.setStatus(InterviewStatus.IN_PROGRESS);
+            session.setStartedAt(LocalDateTime.now());
+            session.setCurrentStep(1);
+            sessionRepository.save(session);
+            
+            Question firstQuestion = createInitialQuestion(session);
+            
+            return buildQuestionResponse(firstQuestion, session);
+            
+        } catch (Exception e) {
+            logger.error("Failed to start interview", e);
+            throw new RuntimeException("Failed to start interview", e);
+        }
+    }
+    
+    private Question createInitialQuestion(InterviewSession session) {
+        Question question = new Question();
+        question.setSession(session);
+        question.setQuestionText("Please introduce yourself and tell us about your background.");
+        question.setCategory(QuestionCategory.GENERAL);
+        question.setDifficulty("EASY");
+        question.setStepNumber(1);
+        
+        return questionRepository.save(question);
+    }
+    
+    @Transactional
+    public Map<String, Object> submitAnswer(Long sessionId, Long questionId, String answerText) {
+        try {
+            InterviewSession session = sessionRepository.findById(sessionId)
+                    .orElseThrow(() -> new RuntimeException("Session not found"));
+            
+            Question question = questionRepository.findById(questionId)
+                    .orElseThrow(() -> new RuntimeException("Question not found"));
+            
+            Answer answer = new Answer();
+            answer.setQuestion(question);
+            answer.setAnswerText(answerText);
+            
+            if (question.getStepNumber() > 1) {
+                Map<String, Object> evaluation = ragService.evaluateAnswer(
+                    question.getQuestionText(),
+                    answerText,
+                    question.getCategory().name(),
+                    session.getJobDescription().getRagDocumentId(),
+                    session.getCandidate().getRagResumeId()
+                );
+                
+                answer.setEvaluationScore(new BigDecimal(evaluation.get("score").toString()));
+                answer.setEvaluationFeedback((String) evaluation.get("feedback"));
+                answer.setStrengths((String) evaluation.get("strengths"));
+                answer.setImprovements((String) evaluation.get("improvements"));
+                answer.setEvaluatedAt(LocalDateTime.now());
+            }
+            
+            answerRepository.save(answer);
+            
+            AskedQuestionArchive archive = new AskedQuestionArchive();
+            archive.setCandidate(session.getCandidate());
+            archive.setQuestionText(question.getQuestionText());
+            archive.setCategory(question.getCategory());
+            archiveRepository.save(archive);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("answer_submitted", true);
+            response.put("step_number", question.getStepNumber());
+            
+            if (answer.getEvaluationScore() != null) {
+                response.put("score", answer.getEvaluationScore());
+            }
+            
+            logger.info("Answer submitted for question: {}", questionId);
+            return response;
+            
+        } catch (Exception e) {
+            logger.error("Failed to submit answer", e);
+            throw new RuntimeException("Failed to submit answer", e);
+        }
+    }
+    
+    @Transactional
+    public QuestionResponse getNextQuestion(Long sessionId) {
+        try {
+            InterviewSession session = sessionRepository.findByIdWithQuestions(sessionId)
+                    .orElseThrow(() -> new RuntimeException("Session not found"));
+            
+            int currentStep = session.getCurrentStep();
+            int nextStep = currentStep + 1;
+            
+            if (nextStep > session.getTotalSteps()) {
+                throw new RuntimeException("Interview completed");
+            }
+            
+            QuestionCategory category = determineNextCategory(session, nextStep);
+            
+            List<String> excludeQuestions = archiveRepository.findQuestionTextsByCandidateIdAndCategory(
+                session.getCandidate().getId(),
+                category
+            );
+            
+            Map<String, Object> generatedQuestions = ragService.generateQuestions(
+                session.getJobDescription().getRagDocumentId(),
+                session.getCandidate().getRagResumeId(),
+                session.getInterviewMode().name(),
+                category.name(),
+                1,
+                excludeQuestions.toArray(new String[0])
+            );
+            
+            JsonNode questionsArray = (JsonNode) generatedQuestions.get("questions");
+            JsonNode questionNode = questionsArray.get(0);
+            
+            Question question = new Question();
+            question.setSession(session);
+            question.setQuestionText(questionNode.get("question").asText());
+            question.setCategory(category);
+            question.setDifficulty(questionNode.get("difficulty").asText());
+            question.setStepNumber(nextStep);
+            
+            Question savedQuestion = questionRepository.save(question);
+            
+            session.setCurrentStep(nextStep);
+            sessionRepository.save(session);
+            
+            return buildQuestionResponse(savedQuestion, session);
+            
+        } catch (Exception e) {
+            logger.error("Failed to get next question", e);
+            throw new RuntimeException("Failed to get next question", e);
+        }
+    }
+    
+    private QuestionCategory determineNextCategory(InterviewSession session, int stepNumber) {
+        int totalSteps = session.getTotalSteps();
+        
+        if (stepNumber <= totalSteps / 3) {
+            return QuestionCategory.BEHAVIORAL;
+        } else if (stepNumber <= (2 * totalSteps) / 3) {
+            return QuestionCategory.TECHNICAL;
+        } else {
+            return QuestionCategory.CODING;
+        }
+    }
+    
+    private QuestionResponse buildQuestionResponse(Question question, InterviewSession session) {
+        QuestionResponse response = new QuestionResponse();
+        response.setQuestionId(question.getId());
+        response.setQuestionText(question.getQuestionText());
+        response.setCategory(question.getCategory().name());
+        response.setStepNumber(question.getStepNumber());
+        response.setTotalSteps(session.getTotalSteps());
+        response.setCurrentStep(session.getCurrentStep());
+        return response;
+    }
+    
+    @Transactional
+    public Map<String, Object> completeInterview(Long sessionId) {
+        try {
+            InterviewSession session = sessionRepository.findByIdWithQuestions(sessionId)
+                    .orElseThrow(() -> new RuntimeException("Session not found"));
+            
+            session.setStatus(InterviewStatus.COMPLETED);
+            session.setCompletedAt(LocalDateTime.now());
+            sessionRepository.save(session);
+            
+            LocalDateTime cooldownUntil = LocalDateTime.now().plusDays(cooldownDays);
+            InterviewHistory history = new InterviewHistory();
+            history.setCandidate(session.getCandidate());
+            history.setSession(session);
+            history.setInterviewDate(LocalDateTime.now());
+            history.setCooldownUntil(cooldownUntil);
+            historyRepository.save(history);
+            
+            EvaluationResult evaluation = evaluateSession(session);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("session_completed", true);
+            response.put("cooldown_until", cooldownUntil);
+            response.put("evaluation_id", evaluation.getId());
+            response.put("message", "Thank you for your time. Your interview has been submitted for evaluation.");
+            
+            logger.info("Interview completed for session: {}", sessionId);
+            return response;
+            
+        } catch (Exception e) {
+            logger.error("Failed to complete interview", e);
+            throw new RuntimeException("Failed to complete interview", e);
+        }
+    }
+    
+    private EvaluationResult evaluateSession(InterviewSession session) {
+        List<Answer> answers = answerRepository.findBySessionId(session.getId());
+        
+        Map<QuestionCategory, List<BigDecimal>> scoresByCategory = answers.stream()
+                .filter(a -> a.getEvaluationScore() != null)
+                .collect(Collectors.groupingBy(
+                    a -> a.getQuestion().getCategory(),
+                    Collectors.mapping(Answer::getEvaluationScore, Collectors.toList())
+                ));
+        
+        BigDecimal codingScore = calculateAverageScore(scoresByCategory.get(QuestionCategory.CODING));
+        BigDecimal behavioralScore = calculateAverageScore(scoresByCategory.get(QuestionCategory.BEHAVIORAL));
+        BigDecimal technicalScore = calculateAverageScore(scoresByCategory.get(QuestionCategory.TECHNICAL));
+        
+        BigDecimal overallScore = calculateOverallScore(codingScore, behavioralScore, technicalScore);
+        
+        EvaluationResult evaluation = new EvaluationResult();
+        evaluation.setSession(session);
+        evaluation.setCodingScore(codingScore);
+        evaluation.setBehavioralScore(behavioralScore);
+        evaluation.setTechnicalScore(technicalScore);
+        evaluation.setOverallScore(overallScore);
+        
+        evaluation.setCodingFeedback(generateCategoryFeedback(QuestionCategory.CODING, answers));
+        evaluation.setBehavioralFeedback(generateCategoryFeedback(QuestionCategory.BEHAVIORAL, answers));
+        evaluation.setTechnicalFeedback(generateCategoryFeedback(QuestionCategory.TECHNICAL, answers));
+        
+        evaluation.setRecommendation(generateRecommendation(overallScore));
+        evaluation.setProceedToNextRound(overallScore.compareTo(new BigDecimal("60")) >= 0);
+        
+        return evaluationRepository.save(evaluation);
+    }
+    
+    private BigDecimal calculateAverageScore(List<BigDecimal> scores) {
+        if (scores == null || scores.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        
+        BigDecimal sum = scores.stream()
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        
+        return sum.divide(new BigDecimal(scores.size()), 2, BigDecimal.ROUND_HALF_UP);
+    }
+    
+    private BigDecimal calculateOverallScore(BigDecimal coding, BigDecimal behavioral, BigDecimal technical) {
+        BigDecimal sum = coding.add(behavioral).add(technical);
+        return sum.divide(new BigDecimal("3"), 2, BigDecimal.ROUND_HALF_UP);
+    }
+    
+    private String generateCategoryFeedback(QuestionCategory category, List<Answer> answers) {
+        List<String> feedbacks = answers.stream()
+                .filter(a -> a.getQuestion().getCategory() == category)
+                .filter(a -> a.getEvaluationFeedback() != null)
+                .map(Answer::getEvaluationFeedback)
+                .collect(Collectors.toList());
+        
+        if (feedbacks.isEmpty()) {
+            return "No feedback available for this category.";
+        }
+        
+        return String.join(" ", feedbacks);
+    }
+    
+    private String generateRecommendation(BigDecimal overallScore) {
+        if (overallScore.compareTo(new BigDecimal("80")) >= 0) {
+            return "Excellent candidate. Strongly recommend for next round.";
+        } else if (overallScore.compareTo(new BigDecimal("60")) >= 0) {
+            return "Good candidate. Recommend for next round with reservations.";
+        } else {
+            return "Candidate needs improvement. Not recommended for next round.";
+        }
+    }
+    
+    public InterviewSession getSessionByToken(String token) {
+        return sessionRepository.findBySessionToken(token)
+                .orElseThrow(() -> new RuntimeException("Session not found with token: " + token));
+    }
+    
+    public Map<String, Object> getSessionStatus(String sessionToken) {
+        InterviewSession session = getSessionByToken(sessionToken);
+        
+        Map<String, Object> status = new HashMap<>();
+        status.put("session_id", session.getId());
+        status.put("status", session.getStatus());
+        status.put("current_step", session.getCurrentStep());
+        status.put("total_steps", session.getTotalSteps());
+        status.put("candidate_name", session.getCandidate().getFullName());
+        status.put("job_title", session.getJobDescription().getTitle());
+        
+        return status;
+    }
+}
+
+// ----
+
+package com.interview.service;
+
+import com.interview.dto.EvaluationResponse;
+import com.interview.model.EvaluationResult;
+import com.interview.model.InterviewSession;
+import com.interview.repository.EvaluationResultRepository;
+import com.interview.repository.InterviewSessionRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+@Service
+public class DashboardService {
+    
+    private static final Logger logger = LoggerFactory.getLogger(DashboardService.class);
+    
+    private final EvaluationResultRepository evaluationRepository;
+    private final InterviewSessionRepository sessionRepository;
+    
+    public DashboardService(EvaluationResultRepository evaluationRepository,
+                          InterviewSessionRepository sessionRepository) {
+        this.evaluationRepository = evaluationRepository;
+        this.sessionRepository = sessionRepository;
+    }
+    
+    public EvaluationResponse getEvaluationBySessionId(Long sessionId) {
+        EvaluationResult evaluation = evaluationRepository.findBySessionId(sessionId)
+                .orElseThrow(() -> new RuntimeException("Evaluation not found for session: " + sessionId));
+        
+        return convertToResponse(evaluation);
+    }
+    
+    public List<EvaluationResponse> getAllEvaluations() {
+        return evaluationRepository.findAll().stream()
+                .map(this::convertToResponse)
+                .collect(Collectors.toList());
+    }
+    
+    private EvaluationResponse convertToResponse(EvaluationResult evaluation) {
+        EvaluationResponse response = new EvaluationResponse();
+        response.setCodingScore(evaluation.getCodingScore());
+        response.setBehavioralScore(evaluation.getBehavioralScore());
+        response.setTechnicalScore(evaluation.getTechnicalScore());
+        response.setOverallScore(evaluation.getOverallScore());
+        response.setCodingFeedback(evaluation.getCodingFeedback());
+        response.setBehavioralFeedback(evaluation.getBehavioralFeedback());
+        response.setTechnicalFeedback(evaluation.getTechnicalFeedback());
+        response.setRecommendation(evaluation.getRecommendation());
+        response.setProceedToNextRound(evaluation.getProceedToNextRound());
+        return response;
+    }
+}
+
+// ==================== CONTROLLERS ====================
+
+package com.interview.controller;
+
+import com.interview.dto.JobDescriptionRequest;
+import com.interview.model.JobDescription;
+import com.interview.service.JobDescriptionService;
+import jakarta.validation.Valid;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/job-descriptions")
+@CrossOrigin(origins = "*")
+public class JobDescriptionController {
+    
+    private final JobDescriptionService jobDescriptionService;
+    
+    public JobDescriptionController(JobDescriptionService jobDescriptionService) {
+        this.jobDescriptionService = jobDescriptionService;
+    }
+    
+    @PostMapping
+    public ResponseEntity<JobDescription> createJobDescription(
+            @RequestPart("data") @Valid JobDescriptionRequest request,
+            @RequestPart(value = "file", required = false) MultipartFile file,
+            @RequestHeader("User-Email") String userEmail) {
+        
+        JobDescription jobDescription = jobDescriptionService.createJobDescription(
+            request, file, userEmail
+        );
+        return ResponseEntity.ok(jobDescription);
+    }
+    
+    @GetMapping
+    public ResponseEntity<List<JobDescription>> getAllActiveJobDescriptions() {
+        return ResponseEntity.ok(jobDescriptionService.getAllActiveJobDescriptions());
+    }
+    
+    @GetMapping("/{id}")
+    public ResponseEntity<JobDescription> getJobDescriptionById(@PathVariable Long id) {
+        return ResponseEntity.ok(jobDescriptionService.getJobDescriptionById(id));
+    }
+    
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deactivateJobDescription(@PathVariable Long id) {
+        jobDescriptionService.deactivateJobDescription(id);
+        return ResponseEntity.noContent().build();
+    }
+}
+
+// ----
+
+package com.interview.controller;
+
+import com.interview.dto.CreateInterviewSessionRequest;
+import com.interview.dto.QuestionResponse;
+import com.interview.dto.SubmitAnswerRequest;
+import com.interview.service.InterviewService;
+import jakarta.validation.Valid;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/interviews")
+@CrossOrigin(origins = "*")
+public class InterviewController {
+    
+    private final InterviewService interviewService;
+    
+    public InterviewController(InterviewService interviewService) {
+        this.interviewService = interviewService;
+    }
+    
+    @PostMapping("/create")
+    public ResponseEntity<Map<String, Object>> createInterviewSession(
+            @RequestPart("data") @Valid CreateInterviewSessionRequest request,
+            @RequestPart("resume") MultipartFile resume,
+            @RequestHeader("User-Email") String userEmail) {
+        
+        Map<String, Object> result = interviewService.createInterviewSession(
+            request, resume, userEmail
+        );
+        return ResponseEntity.ok(result);
+    }
+    
+    @PostMapping("/start")
+    public ResponseEntity<QuestionResponse> startInterview(@RequestParam String email) {
+        QuestionResponse question = interviewService.startInterview(email);
+        return ResponseEntity.ok(question);
+    }
+    
+    @GetMapping("/session/{sessionToken}/status")
+    public ResponseEntity<Map<String, Object>> getSessionStatus(@PathVariable String sessionToken) {
+        return ResponseEntity.ok(interviewService.getSessionStatus(sessionToken));
+    }
+    
+    @PostMapping("/session/{sessionId}/answer/{questionId}")
+    public ResponseEntity<Map<String, Object>> submitAnswer(
+            @PathVariable Long sessionId,
+            @PathVariable Long questionId,
+            @RequestBody @Valid SubmitAnswerRequest request) {
+        
+        Map<String, Object> result = interviewService.submitAnswer(
+            sessionId, questionId, request.getAnswerText()
+        );
+        return ResponseEntity.ok(result);
+    }
+    
+    @GetMapping("/session/{sessionId}/next-question")
+    public ResponseEntity<QuestionResponse> getNextQuestion(@PathVariable Long sessionId) {
+        QuestionResponse question = interviewService.getNextQuestion(sessionId);
+        return ResponseEntity.ok(question);
+    }
+    
+    @PostMapping("/session/{sessionId}/complete")
+    public ResponseEntity<Map<String, Object>> completeInterview(@PathVariable Long sessionId) {
+        Map<String, Object> result = interviewService.completeInterview(sessionId);
+        return ResponseEntity.ok(result);
+    }
+}
+
+// ----
+
+package com.interview.controller;
+
+import com.interview.dto.EvaluationResponse;
+import com.interview.service.DashboardService;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/dashboard")
+@CrossOrigin(origins = "*")
+public class DashboardController {
+    
+    private final DashboardService dashboardService;
+    
+    public DashboardController(DashboardService dashboardService) {
+        this.dashboardService = dashboardService;
+    }
+    
+    @GetMapping("/evaluations")
+    public ResponseEntity<List<EvaluationResponse>> getAllEvaluations() {
+        return ResponseEntity.ok(dashboardService.getAllEvaluations());
+    }
+    
+    @GetMapping("/evaluations/session/{sessionId}")
+    public ResponseEntity<EvaluationResponse> getEvaluationBySessionId(@PathVariable Long sessionId) {
+        return ResponseEntity.ok(dashboardService.getEvaluationBySessionId(sessionId));
+    }
+}
+
+// ==================== SECURITY CONFIGURATION ====================
+
+package com.interview.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.web.SecurityFilterChain;
+
+@Configuration
+@EnableWebSecurity
+public class SecurityConfig {
+    
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        http
+            .csrf(csrf -> csrf.disable())
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers("/api/**").permitAll()
+                .anyRequest().authenticated()
+            );
+        
+        return http.build();
+    }
+}
+
+// ==================== EXCEPTION HANDLING ====================
+
+package com.interview.exception;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
+
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+    
+    private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+    
+    @ExceptionHandler(RuntimeException.class)
+    public ResponseEntity<Map<String, Object>> handleRuntimeException(RuntimeException ex) {
+        logger.error("Runtime exception occurred", ex);
+        
+        Map<String, Object> errorResponse = new HashMap<>();
+        errorResponse.put("timestamp", LocalDateTime.now());
+        errorResponse.put("error", ex.getMessage());
+        errorResponse.put("status", HttpStatus.INTERNAL_SERVER_ERROR.value());
+        
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+    }
+    
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<Map<String, Object>> handleGeneralException(Exception ex) {
+        logger.error("Unexpected exception occurred", ex);
+        
+        Map<String, Object> errorResponse = new HashMap<>();
+        errorResponse.put("timestamp", LocalDateTime.now());
+        errorResponse.put("error", "An unexpected error occurred");
+        errorResponse.put("status", HttpStatus.INTERNAL_SERVER_ERROR.value());
+        
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+    }
+}
+
+// ==================== CORS CONFIGURATION ====================
+
+package com.interview.config;
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.config.annotation.CorsRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+
+@Configuration
+public class CorsConfig implements WebMvcConfigurer {
+    
+    @Override
+    public void addCorsMappings(CorsRegistry registry) {
+        registry.addMapping("/api/**")
+                .allowedOrigins("http://localhost:3000", "http://localhost:5173")
+                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                .allowedHeaders("*")
+                .allowCredentials(true);
+    }
+}
+
+
+application.yaml
+
+rag:
+  api:
+    base-url: YOUR_RAG_URL
+    client-id: YOUR_CLIENT_ID
+    client-secret: YOUR_SECRET
+    application-name: YOUR_APP_NAME
+    application-key: YOUR_APP_KEY
